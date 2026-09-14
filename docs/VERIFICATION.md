@@ -63,8 +63,20 @@ Sinhronizacija je bila preverjena proti pravi končni točki:
 
 Poleg tega testi pokrivajo sinhronizacijo z nadomestnim odjemalcem: posodobitev spremenjenega polja, ohranitev ID-ja in mnenja, ter prekinitev brez zapisa ob podvojeni identiteti ali neveljavnem URL-ju.
 
+## Preverjanje okolij
+
+| Okolje | Rezultat |
+|---|---|
+| Apache prek DDEV (`ddev start`) | lupina, prijava, seznam izdelkov in slike delujejo brez ročnih nastavitev |
+| Vgrajeni strežnik PHP (`bin/router.php`) | enako |
+| Podmapa v `htdocs/` | razreševanje predpone URL je pokrito s testi za vseh pet postavitev |
+
+Ob nedosegljivi bazi aplikacija vrne `500` in JSON s splošnim sporočilom — brez sledi sklada, imena izjeme ali poti do datotek.
+
 ## Napake, odkrite in odpravljene med preverjanjem
 
 - **Seznam ponudnikov AI je ostal prazen po prijavi.** Nalagal se je samo ob zagonu strani, ko uporabnik še ni bil prijavljen. Zdaj se naloži tudi po uspešni prijavi.
 - **Vgrajeni strežnik PHP je vračal HTML namesto CSS in JS.** Vstopna točka je prestrezala tudi `/assets/*`. Dodan je `bin/router.php`, ki obstoječe datoteke prepusti strežniku. Apache tega ne potrebuje, ker to opravi `public/.htaccess`.
 - **Seja se je poskušala zagnati v ukazni vrstici** in je pri polnjenju podatkov ter testih sprožala opozorila. `Session` je zdaj v CLI neaktiven.
+- **Napaka baze je ušla kot nepričakovana usodna napaka.** Vsebnik se je uporabil pred blokom `try`, zato je nedosegljiva baza izpisala sled sklada namesto čistega odgovora. Zdaj je vse znotraj lovilca in odgovor je `500` s splošnim sporočilom.
+- **Ime projekta DDEV je trčilo z drugim projektom** na istem računalniku. Ime je ostalo `testimonials-manager`, kar je za ocenjevalca pravo ime; trčenje je bilo le lokalno.

@@ -31,11 +31,6 @@ mb_internal_encoding('UTF-8');
 
 $request = new Request();
 $app = new App($config);
-
-// Image URLs are absolute from the application root, which differs when the
-// project is served from a subdirectory.
-$app->images()->setBaseUrl($request->basePath);
-
 $router = new Router();
 
 $auth = new AuthController($app);
@@ -84,6 +79,11 @@ $router->get('/api/ai-providers', fn ($r, $p) => $copies->providers());
 $router->get('/api/public/landings/{external_id}/testimonials', fn ($r, $p) => $public->testimonials($r, $p));
 
 try {
+    // Touching the container can fail (for example when the database is
+    // unreachable), so it happens inside the handler that turns any problem
+    // into a clean response rather than a stack trace.
+    $app->images()->setBaseUrl($request->basePath);
+
     $isApi = str_starts_with($request->path, '/api/');
 
     if ($isApi) {
@@ -112,7 +112,7 @@ try {
     require dirname(__DIR__).'/src/View/shell.php';
 } catch (HttpException $e) {
     Response::error($e->getMessage(), $e->status(), $e->errors());
-} catch (\Throwable $e) {
+} catch (\Throwable $e) {  // includes PDO failures and any programming error
     error_log(sprintf('[testimonials] %s: %s in %s:%d', get_class($e), $e->getMessage(), $e->getFile(), $e->getLine()));
 
     // Never leak an internal message or a stack trace to the client.
