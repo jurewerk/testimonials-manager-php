@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 /**
  * Configuration is read from config/config.local.php when present, otherwise
- * from environment variables, otherwise from the defaults below. The API key
- * and database password therefore never need to live in version control.
+ * from environment variables, otherwise from the defaults below. The API key,
+ * the provider's endpoint and the database password therefore never need to
+ * live in version control.
  */
 $local = __DIR__.'/config.local.php';
 $overrides = is_file($local) ? require $local : [];
@@ -20,6 +21,9 @@ return array_replace_recursive([
     'app' => [
         'name' => 'Testimonials Manager',
         'debug' => filter_var($env('APP_DEBUG', 'false'), FILTER_VALIDATE_BOOL),
+        // Pin the public origin when the app sits behind a proxy or a CDN;
+        // empty means "derive it from the request".
+        'url' => rtrim((string) $env('APP_URL', ''), '/'),
     ],
     'db' => [
         'host' => $env('DB_HOST', '127.0.0.1'),
@@ -39,7 +43,9 @@ return array_replace_recursive([
         'max_per_request' => 10,
     ],
     'landings_api' => [
-        'url' => $env('LANDINGS_API_URL', 'https://develop.s-mania.com/it/testimonials/landings-api.php'),
+        // Supplied with the assignment, together with the key. Both belong in
+        // config/config.local.php, which is not in version control.
+        'url' => $env('LANDINGS_API_URL', ''),
         'key' => $env('LANDINGS_API_KEY', ''),
         'page_size' => 500,
         'timeout' => 20,

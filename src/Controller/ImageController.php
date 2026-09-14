@@ -121,8 +121,16 @@ class ImageController
 
         header('Content-Type: '.$row['mime_type']);
         header('Content-Length: '.filesize($file));
-        header('Cache-Control: public, max-age=86400');
+        // The file name is a UUID and its content never changes, so it can be
+        // cached hard. No session is started on this route, which is what keeps
+        // PHP from stamping the response no-cache.
+        header('Cache-Control: public, max-age=86400, immutable');
         header('X-Content-Type-Options: nosniff');
+
+        if ($request->method === 'HEAD') {
+            return;
+        }
+
         readfile($file);
     }
 }

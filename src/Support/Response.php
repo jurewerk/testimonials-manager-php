@@ -16,6 +16,10 @@ class Response
             header($name.': '.$value);
         }
 
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'HEAD') {
+            return;
+        }
+
         echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 

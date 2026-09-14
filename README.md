@@ -27,11 +27,11 @@ Obe datoteki lahko uvozite tudi prek phpMyAdmina (zavihek Uvoz).
 ```php
 return [
     'db' => ['host' => '127.0.0.1', 'port' => 3306, 'name' => 'testimonials', 'user' => 'root', 'pass' => ''],
-    'landings_api' => ['key' => 'kljuc-iz-naloge'],
+    'landings_api' => ['url' => 'https://.../landings-api.php', 'key' => 'kljuc-iz-naloge'],
 ];
 ```
 
-Ta datoteka je v `.gitignore`, zato ključ in geslo nikoli ne gresta v repozitorij.
+Ta datoteka je v `.gitignore`, zato **ne ključ, ne naslov ponudnikove končne točke in ne geslo** ne gredo v repozitorij. Enako lahko nastavite prek spremenljivk okolja `DB_*`, `LANDINGS_API_URL` in `LANDINGS_API_KEY`.
 
 **4. Odprite aplikacijo** in se prijavite z **admin@example.test** / **local-demo-only**.
 
@@ -66,7 +66,7 @@ Konfiguracija je priložena; ob zagonu se uvozita `schema.sql` in `seed.sql`, ap
 
 ## Sinhronizacija landingov
 
-Landingov ne vnašamo ročno — uvozijo se iz ponudnikove končne točke. Ključ vpišite v `config/config.local.php`, nato:
+Landingov ne vnašamo ročno — uvozijo se iz ponudnikove končne točke. **Naslov končne točke in ključ** vpišite v `config/config.local.php` (brez njiju uvoz vrne 503 in ne naredi ničesar), nato:
 
 ```sh
 php bin/sync.php                                   # vse
@@ -82,6 +82,8 @@ To je najbolj občutljiv del naloge, zato je rešen v dveh fazah:
 
 1. **Prenos in preverjanje.** Vse strani se prenesejo in v celoti preverijo, preden se odpre transakcija. Manjkajoče polje, neveljaven URL, podvojena identiteta ali dvojni par izdelek/država prekinejo uvoz, **ne da bi se karkoli zapisalo**.
 2. **Upsert v eni transakciji.** Zapisi se posodabljajo po ponudnikovem stabilnem `external_id`. Tabele se **nikoli** ne praznijo — nobenega `TRUNCATE` ali `DELETE`. Lokalni `landings.id` zato ostane isti in mnenja ne izgubijo reference.
+
+Ponudnikovi podatki niso del oddanega arhiva: `seed.sql` vsebuje samo izmišljeno demo vsebino (3 izdelki, 24 landingov, vsi naslovi na `example.com`), pravi katalog pa nastane šele ob sinhronizaciji na vašem stroju.
 
 Ključ potuje izključno v glavi `X-Api-Key`. Ob napaki se vrne varno sporočilo; ponudnikovo telo odgovora se nikoli ne izpiše, ker bi lahko vsebovalo ključ.
 
@@ -105,7 +107,7 @@ Preverjeno proti pravi končni točki: prvi uvoz `170 ustvarjenih`, drugi `170 n
 - **Kopiranje med državami** s štirimi strategijami: dodaj, zamenjaj, samo kadar je prazno, preskoči dvojnike. Kopije so samostojni zapisi z **lastnimi datotekami slik**, zato urejanje kopije ne vpliva na izvirnik.
 - **Množične akcije**: označi več mnenj → aktiviraj, deaktiviraj, izbriši, vse v eni transakciji.
 - **Drag & drop** za vrstni red mnenj in slik; vsak premik shrani celoten seznam ID-jev v enem klicu.
-- **Obdelava slik**: zmanjšanje na največ 2000 px, pretvorba v WebP, pomanjšava 320×240. Ponovno kodiranje odstrani metapodatke.
+- **Obdelava slik**: zmanjšanje na največ 2000 px z ohranjenim razmerjem stranic, pretvorba v WebP in **pomanjšava z obrezovanjem (crop)** na točno 320×240 — iz sredine se vzame največji izsek s pravim razmerjem, zato je mreža sličic poravnana ne glede na obliko izvirnika. Ponovno kodiranje odstrani metapodatke.
 - **Dnevnik sprememb** z vrednostmi pred in po, avtorjem in časom, dostopen pri vsakem zapisu.
 - **AI: prevajanje in generiranje imen** prek izbranega ponudnika, z obveznim predogledom pred shranjevanjem.
 
@@ -198,7 +200,17 @@ GET    /api/ai-providers
 GET    /api/public/landings/{external_id}/testimonials
 ```
 
-Zadnja pot je namenoma javna in namenjena vgradnji v pristajalno stran: vrne samo **aktivna efektivna** mnenja, naključne ocene razreši v 4 ali 5 in izpusti notranja polja (avtorstvo, revizijo, različico, stanje aktivnosti).
+Zadnji dve poti sta namenoma javni in namenjeni vgradnji v pristajalno stran:
+
+- `GET /api/public/landings/{external_id}/testimonials` vrne samo **aktivna efektivna** mnenja, naključne ocene razreši v 4 ali 5 in izpusti notranja polja (avtorstvo, revizijo, različico, stanje aktivnosti).
+- `GET /api/images/{ime-datoteke}` postreže sliko iz `storage/uploads/`, ki je zunaj korena dokumenta; ime se vedno preveri v bazi, zato po poti ni mogoče priti nikamor drugam.
+
+Ker ju pristajalna stran kliče **z drugega izvora**, obe poti:
+
+- vračata **absolutne** naslove slik (`https://gostitelj/api/images/...`), ne poti od korena, ki bi se na tuji strani razrešile na napačnem gostitelju. Izvor se privzeto razbere iz zahteve; za delo za posrednikom ali omrežjem CDN ga pripnete z `app.url` oziroma `APP_URL`;
+- pošiljata glave **CORS** (`Access-Control-Allow-Origin: *`, brez poverilnic, ker gre za javne podatke) in odgovorita na prehodno zahtevo `OPTIONS`;
+- odgovorita tudi na **`HEAD`**, kar uporabljajo predpomnilniki in posredniki;
+- **ne odpreta seje in ne postavita piškotka**, zato slike ostanejo predpomnljive (`Cache-Control: public, max-age=86400, immutable`). Imena datotek so UUID, zato se vsebina pod istim naslovom nikoli ne spremeni.
 
 ---
 
@@ -236,6 +248,9 @@ php tests/run.php
 | Kopiranje | samostojnost kopij, strategija »samo kadar je prazno«, prevod prek ponudnika |
 | Sinhronizacija | posodobitev spremenjenih polj, ohranjeni ID-ji in mnenja, prekinitev ob podvojeni identiteti ali neveljavnem URL-ju brez zapisa |
 | Javni API | naključna ocena vedno 4 ali 5, brez notranjih polj |
+| Absolutni naslovi | izvor iz zahteve, `HTTPS`, posrednik `X-Forwarded-Proto`, podmapa; ponarejena glava `Host` se ne prepiše v naslove |
+| Metoda `HEAD` | se usmeri kot `GET`; pot brez `GET` še vedno vrne 405 |
+| Obrezovanje sličic | točno 320×240 za panoramo, pokončno sliko, kvadrat in že pravo razmerje; sredina ohranjena, izvirnik se nikoli ne poveča |
 | Kodiranje | cirilica, grščina, šumniki in emoji preživijo pot skozi bazo |
 
 Zaganjalnik zavrne vsako bazo, katere ime se ne konča na `_test`.

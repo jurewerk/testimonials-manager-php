@@ -19,6 +19,7 @@ use App\App;
 use App\Service\LandingSyncService;
 use App\Support\HttpException;
 use App\Support\Request;
+use App\Support\Router;
 use App\Support\Validator;
 use App\Support\ValidationException;
 
@@ -66,12 +67,17 @@ Harness::test('validator ignores fields that were not declared', function () {
 });
 
 /** Builds a Request with a specific server layout. */
-function requestFor(string $scriptName, string $requestUri): Request
+function requestFor(string $scriptName, string $requestUri, array $server = []): Request
 {
     $_SERVER['REQUEST_METHOD'] = 'GET';
     $_SERVER['SCRIPT_NAME'] = $scriptName;
     $_SERVER['REQUEST_URI'] = $requestUri;
     $_SERVER['CONTENT_TYPE'] = '';
+    unset($_SERVER['HTTP_HOST'], $_SERVER['SERVER_NAME'], $_SERVER['HTTPS'], $_SERVER['HTTP_X_FORWARDED_PROTO']);
+
+    foreach ($server as $key => $value) {
+        $_SERVER[$key] = $value;
+    }
     $_GET = [];
     $_POST = [];
     $_FILES = [];
@@ -93,6 +99,82 @@ Harness::test('base path is resolved for every supported server layout', functio
         $request = requestFor($script, $uri);
         Harness::assertSame($base, $request->basePath, "base for $uri");
         Harness::assertSame($path, $request->path, "path for $uri");
+    }
+});
+
+Harness::test('the base URL is absolute so off-site consumers resolve image links', function () {
+    // A landing page on another host receives these URLs; a root-relative path
+    // would resolve against that host instead of this application.
+    $cases = [
+        // server overrides,                                              script, uri,                 expected base URL
+        [['HTTP_HOST' => 'admin.example.com'], '/index.php', '/api/x', 'http://admin.example.com'],
+        [['HTTP_HOST' => 'admin.example.com', 'HTTPS' => 'on'], '/index.php', '/api/x', 'https://admin.example.com'],
+        [['HTTP_HOST' => 'admin.example.com', 'HTTPS' => 'off'], '/index.php', '/api/x', 'http://admin.example.com'],
+        [['HTTP_HOST' => 'admin.example.com:8080'], '/index.php', '/api/x', 'http://admin.example.com:8080'],
+        // TLS terminated at a proxy.
+        [['HTTP_HOST' => 'example.com', 'HTTP_X_FORWARDED_PROTO' => 'https'], '/index.php', '/api/x', 'https://example.com'],
+        // Subdirectory install keeps its prefix.
+        [['HTTP_HOST' => 'localhost'], '/testimonials-manager/public/index.php', '/testimonials-manager/api/x', 'http://localhost/testimonials-manager'],
+    ];
+
+    foreach ($cases as [$server, $script, $uri, $expected]) {
+        Harness::assertSame($expected, requestFor($script, $uri, $server)->baseUrl, "base URL for $uri");
+    }
+
+    // A forged or missing Host is not echoed back into generated URLs.
+    foreach (['evil.com/../x', 'a b', ''] as $bad) {
+        Harness::assertSame('', requestFor('/index.php', '/api/x', ['HTTP_HOST' => $bad])->baseUrl, "rejects host \"$bad\"");
+    }
+});
+
+Harness::test('HEAD is routed as GET so caches and proxies can probe an image', function () {
+    $router = new Router();
+    $router->get('/api/images/{path}', fn ($r, $p) => $p);
+    $router->post('/api/testimonials/{id}/images', fn ($r, $p) => $p);
+
+    [$handler, $params] = $router->match('HEAD', '/api/images/abc.webp');
+    Harness::assertSame(['path' => 'abc.webp'], $params);
+
+    // A route that has no GET is still refused, rather than answered.
+    Harness::assertThrows(fn () => $router->match('HEAD', '/api/testimonials/1/images'), HttpException::class);
+    Harness::assertSame(null, $router->match('HEAD', '/api/nothing'));
+});
+
+Harness::test('thumbnails are cropped to exactly the configured size, full images only scaled down', function () use ($config) {
+    $service = (new ReflectionClass(\App\Service\ImageService::class))->newInstanceWithoutConstructor();
+    $property = new ReflectionProperty(\App\Service\ImageService::class, 'config');
+    $property->setAccessible(true);
+    $property->setValue($service, $config['uploads']);
+
+    $resize = new ReflectionMethod(\App\Service\ImageService::class, 'resize');
+    $resize->setAccessible(true);
+
+    foreach ([[1600, 400], [400, 1600], [640, 480], [100, 100], [2400, 1800]] as [$w, $h]) {
+        $source = imagecreatetruecolor($w, $h);
+        // A red block in the middle: a crop anchored anywhere but the centre
+        // would miss it.
+        imagefilledrectangle($source, 0, 0, $w - 1, $h - 1, imagecolorallocate($source, 10, 20, 30));
+        imagefilledrectangle($source, (int) ($w * 0.25), (int) ($h * 0.25), (int) ($w * 0.75), (int) ($h * 0.75), imagecolorallocate($source, 200, 50, 50));
+
+        $thumb = $resize->invoke($service, $source, 320, 240, true);
+        Harness::assertSame(320, imagesx($thumb), "thumb width for {$w}x{$h}");
+        Harness::assertSame(240, imagesy($thumb), "thumb height for {$w}x{$h}");
+
+        $centre = imagecolorsforindex($thumb, imagecolorat($thumb, 160, 120));
+        Harness::assertSame(200, $centre['red'], "thumb is centred for {$w}x{$h}");
+
+        // Without cropping the whole image is kept and never enlarged.
+        $full = $resize->invoke($service, $source, 2000, 2000, false);
+        Harness::assertTrue(imagesx($full) <= 2000 && imagesy($full) <= 2000, "full fits the box for {$w}x{$h}");
+        Harness::assertSame(
+            round($w / $h, 2),
+            round(imagesx($full) / imagesy($full), 2),
+            "full keeps the aspect ratio for {$w}x{$h}"
+        );
+
+        imagedestroy($source);
+        imagedestroy($thumb);
+        imagedestroy($full);
     }
 });
 

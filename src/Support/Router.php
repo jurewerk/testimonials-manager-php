@@ -43,6 +43,11 @@ class Router
      */
     public function match(string $method, string $path): ?array
     {
+        // HEAD is a GET without a body; handlers omit the body themselves.
+        if ($method === 'HEAD') {
+            $method = 'GET';
+        }
+
         $pathMatched = false;
 
         foreach ($this->routes as $route) {

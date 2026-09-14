@@ -93,7 +93,9 @@ class ImageService
 
         try {
             $full = $this->resize($source, $this->config['max_dimension'], $this->config['max_dimension'], false);
-            $thumb = $this->resize($source, $this->config['thumb_width'], $this->config['thumb_height'], false);
+            // Thumbnails are cropped so the grid is not ragged: every one comes
+            // out at exactly thumb_width x thumb_height.
+            $thumb = $this->resize($source, $this->config['thumb_width'], $this->config['thumb_height'], true);
 
             $useWebp = function_exists('imagewebp');
             $extension = $useWebp ? 'webp' : 'png';
@@ -140,18 +142,50 @@ class ImageService
         return $image === false ? null : $image;
     }
 
+    /**
+     * Scales an image down.
+     *
+     * With $crop false the whole image is kept and the aspect ratio decides the
+     * result, never larger than the given box. With $crop true the result is
+     * exactly $maxWidth x $maxHeight: the largest centred region of the source
+     * with that aspect ratio is taken and scaled to fill the box.
+     */
     private function resize($source, int $maxWidth, int $maxHeight, bool $crop)
     {
         $width = imagesx($source);
         $height = imagesy($source);
+
+        if ($crop) {
+            // Widest or tallest centred rectangle that matches the target ratio.
+            $ratio = $maxWidth / $maxHeight;
+            $cropWidth = min($width, (int) round($height * $ratio));
+            $cropHeight = min($height, (int) round($width / $ratio));
+            $srcX = (int) round(($width - $cropWidth) / 2);
+            $srcY = (int) round(($height - $cropHeight) / 2);
+
+            $canvas = $this->canvas($maxWidth, $maxHeight);
+            imagecopyresampled($canvas, $source, 0, 0, $srcX, $srcY, $maxWidth, $maxHeight, max(1, $cropWidth), max(1, $cropHeight));
+
+            return $canvas;
+        }
+
         $scale = min($maxWidth / $width, $maxHeight / $height, 1);
         $targetWidth = max(1, (int) round($width * $scale));
         $targetHeight = max(1, (int) round($height * $scale));
 
-        $canvas = imagecreatetruecolor($targetWidth, $targetHeight);
+        $canvas = $this->canvas($targetWidth, $targetHeight);
+        imagecopyresampled($canvas, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
+
+        return $canvas;
+    }
+
+    /** A transparent truecolour canvas that keeps the alpha channel on save. */
+    private function canvas(int $width, int $height)
+    {
+        $canvas = imagecreatetruecolor($width, $height);
         imagealphablending($canvas, false);
         imagesavealpha($canvas, true);
-        imagecopyresampled($canvas, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
+        imagefill($canvas, 0, 0, imagecolorallocatealpha($canvas, 0, 0, 0, 127));
 
         return $canvas;
     }

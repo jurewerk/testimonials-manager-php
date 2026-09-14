@@ -13,6 +13,9 @@ class Request
     /** URL prefix the application is served under, "" or "/sub/path". */
     public string $basePath;
 
+    /** Absolute origin + prefix, "https://host/sub/path", for URLs that leave the site. */
+    public string $baseUrl;
+
     private array $query;
 
     private array $body;
@@ -23,6 +26,7 @@ class Request
     {
         $this->method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
         $this->basePath = self::detectBasePath();
+        $this->baseUrl = self::detectBaseUrl($this->basePath);
 
         $uri = (string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
         $uri = rawurldecode($uri);
@@ -62,6 +66,34 @@ class Request
         }
 
         return '';
+    }
+
+    /**
+     * Absolute base URL for links that are consumed off-site — the public API
+     * hands image URLs to landing pages on other hosts, where a root-relative
+     * path would resolve against the wrong origin.
+     *
+     * The Host header is attacker-controlled, so it is accepted only if it
+     * looks like a host name; set app.url in the configuration to pin it.
+     */
+    private static function detectBaseUrl(string $basePath): string
+    {
+        $host = (string) ($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '');
+
+        if (! preg_match('/^[A-Za-z0-9.-]+(:\\d{1,5})?$/', $host)) {
+            return $basePath;
+        }
+
+        $forwarded = strtolower(trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+
+        if ($forwarded === 'https' || $forwarded === 'http') {
+            $scheme = $forwarded;
+        } else {
+            $https = (string) ($_SERVER['HTTPS'] ?? '');
+            $scheme = $https !== '' && strtolower($https) !== 'off' ? 'https' : 'http';
+        }
+
+        return $scheme.'://'.$host.$basePath;
     }
 
     private function readBody(): array

@@ -78,18 +78,41 @@ $router->get('/api/images/{path}', fn ($r, $p) => $images->serve($r, $p));
 $router->get('/api/ai-providers', fn ($r, $p) => $copies->providers());
 $router->get('/api/public/landings/{external_id}/testimonials', fn ($r, $p) => $public->testimonials($r, $p));
 
+$isPublicApi = str_starts_with($request->path, '/api/public/')
+    || str_starts_with($request->path, '/api/images/');
+
+if ($isPublicApi) {
+    // Landing pages consume these two routes from another origin. The data is
+    // public and no cookie is read here, so "*" is the correct, safe answer;
+    // it must never be paired with Access-Control-Allow-Credentials.
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: GET, HEAD, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type');
+    header('Access-Control-Max-Age: 86400');
+
+    if ($request->method === 'OPTIONS') {
+        http_response_code(204);
+        exit;
+    }
+}
+
 try {
     // Touching the container can fail (for example when the database is
     // unreachable), so it happens inside the handler that turns any problem
     // into a clean response rather than a stack trace.
-    $app->images()->setBaseUrl($request->basePath);
+    // Absolute, because the public API hands these URLs to pages on other hosts.
+    $app->images()->setBaseUrl($config['app']['url'] !== '' ? $config['app']['url'] : $request->baseUrl);
 
     $isApi = str_starts_with($request->path, '/api/');
 
     if ($isApi) {
-        // The public read API and the login form are reachable without a session;
-        // every other API route validates the CSRF token first.
-        if (! str_starts_with($request->path, '/api/public/')) {
+        // Only a state-changing request needs the token. Constructing Csrf also
+        // starts the session, so safe requests skip it entirely — otherwise
+        // every anonymous image fetch would mint a session and PHP would stamp
+        // the response no-cache.
+        $isSafe = in_array($request->method, ['GET', 'HEAD', 'OPTIONS'], true);
+
+        if (! $isSafe && ! $isPublicApi) {
             $app->csrf()->check($request);
         }
 

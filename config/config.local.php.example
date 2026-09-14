@@ -12,7 +12,8 @@ return [
         'pass' => '',
     ],
     'landings_api' => [
-        // Supplied with the assignment. Never commit the real key.
+        // Both supplied with the assignment. Never commit either of them.
+        'url' => '',
         'key' => '',
     ],
 ];

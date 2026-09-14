@@ -23,8 +23,8 @@ class LandingApiClient
 
     public function fetchPage(int $limit, int $offset, array $filters = []): array
     {
-        if (($this->config['key'] ?? '') === '') {
-            throw new HttpException('The landings API key is not configured. Set it in config/config.local.php.', 503);
+        if (($this->config['url'] ?? '') === '' || ($this->config['key'] ?? '') === '') {
+            throw new HttpException('The landings API endpoint and key are not configured. Set them in config/config.local.php.', 503);
         }
 
         $query = ['limit' => $limit, 'offset' => $offset];
