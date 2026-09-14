@@ -38,7 +38,7 @@ class Csrf
         $provided = $request->header('X-CSRF-Token') ?? '';
 
         if (! hash_equals($this->token(), $provided)) {
-            throw new HttpException('CSRF token mismatch.', 419);
+            throw new HttpException('CSRF token mismatch. Reload the page and try again.', 403);
         }
     }
 }

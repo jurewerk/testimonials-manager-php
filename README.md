@@ -164,7 +164,7 @@ Fizičnega podvajanja ali združevanja ni.
 
 ## API
 
-Vse poti vračajo JSON. Uporabljene so smiselne metode in statusne kode: **201** ob ustvarjanju, **204** ob brisanju in preurejanju, **401** brez prijave, **403** ob tujem zapisu, **409** ob zastareli različici, **419** ob manjkajočem žetonu CSRF, **422** ob napaki validacije.
+Vse poti vračajo JSON. Uporabljene so smiselne metode in statusne kode: **201** ob ustvarjanju, **204** ob brisanju in preurejanju, **401** brez prijave, **409** ob zastareli različici, **403** ob manjkajočem žetonu CSRF ali tujem zapisu, **422** ob napaki validacije.
 
 ```text
 POST   /api/login

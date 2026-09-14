@@ -73,6 +73,36 @@ Poleg tega testi pokrivajo sinhronizacijo z nadomestnim odjemalcem: posodobitev 
 
 Ob nedosegljivi bazi aplikacija vrne `500` in JSON s splošnim sporočilom — brez sledi sklada, imena izjeme ali poti do datotek.
 
+## Preverjanje na pravem skladu LAMP
+
+Projekt je bil razpakiran iz oddanega arhiva v spletni koren **pravega Apacheja 2.4 z `mod_rewrite` in `mod_php` ter MySQL 8** — torej natanko tako, kot ga postavi XAMPP oziroma WAMP: v podmapo korena dokumenta, dosegljivo na `http://localhost/testimonials-manager`.
+
+Baza je bila zgrajena izključno iz `schema.sql` in `seed.sql`.
+
+| Preverjeno | Rezultat |
+|---|---|
+| Odpiranje `http://localhost/testimonials-manager` | 200, predpona `/testimonials-manager` pravilno vstavljena |
+| CSS in JS | 200, pravilna vrsta vsebine, poti s predpono |
+| Globoka povezava `/products/1` in osvežitev nanjo | 200 — `mod_rewrite` in razreševanje predpone delujeta |
+| Prijava, seznam izdelkov, pregled držav, dedovanje | delujejo |
+| Nalaganje slike JPEG | 201, GD pretvori v WebP in ustvari pomanjšavo |
+| Strežene slike iz mape zunaj korena dokumenta | 200 `image/webp` |
+| Brskalnik (Chromium): prijava, iskanje, ustvarjanje mnenja, dedovanje | brez napak v konzoli |
+| Zahteva za `seed.sql`, `src/App.php`, `config/config.local.php` | vrne lupino aplikacije, **ne vsebine datotek** — korenski `.htaccess` preusmeri v `public/` |
+
+Statusne kode, izmerjene prek Apacheja:
+
+| Primer | Koda |
+|---|---|
+| Ustvarjanje | 201 |
+| Brisanje | 204 |
+| Brez prijave | 401 |
+| Manjkajoč žeton CSRF | 403 |
+| Tuji zapis v množični akciji | 403 |
+| Neobstoječ zapis | 404 |
+| Zastarela različica | 409 |
+| Napaka validacije | 422 |
+
 ## Napake, odkrite in odpravljene med preverjanjem
 
 - **Seznam ponudnikov AI je ostal prazen po prijavi.** Nalagal se je samo ob zagonu strani, ko uporabnik še ni bil prijavljen. Zdaj se naloži tudi po uspešni prijavi.
@@ -80,3 +110,4 @@ Ob nedosegljivi bazi aplikacija vrne `500` in JSON s splošnim sporočilom — b
 - **Seja se je poskušala zagnati v ukazni vrstici** in je pri polnjenju podatkov ter testih sprožala opozorila. `Session` je zdaj v CLI neaktiven.
 - **Napaka baze je ušla kot nepričakovana usodna napaka.** Vsebnik se je uporabil pred blokom `try`, zato je nedosegljiva baza izpisala sled sklada namesto čistega odgovora. Zdaj je vse znotraj lovilca in odgovor je `500` s splošnim sporočilom.
 - **Ime projekta DDEV je trčilo z drugim projektom** na istem računalniku. Ime je ostalo `testimonials-manager`, kar je za ocenjevalca pravo ime; trčenje je bilo le lokalno.
+- **Zavrnjen žeton CSRF je vračal 500 namesto pričakovane kode.** Uporabljena je bila koda 419, ki ni registrirana statusna koda HTTP; Apache jo je pretvoril v 500. Zamenjana je s **403**, kar je prenosljivo in pravilno. Odkrito šele ob preizkusu na pravem Apacheju — vgrajeni strežnik PHP je 419 sprejel brez pripomb.
