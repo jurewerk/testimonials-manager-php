@@ -1,0 +1,13 @@
+# Lets the project be served with its own directory as the document root, which
+# is what a plain XAMPP / WAMP install under htdocs/ gives you. Pointing a
+# virtual host straight at public/ is cleaner and makes this file unnecessary.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?!public/)(.*)$ public/$1 [L]
+</IfModule>
+
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</FilesMatch>

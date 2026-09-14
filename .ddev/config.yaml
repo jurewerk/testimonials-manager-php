@@ -1,0 +1,21 @@
+name: testimonials-manager
+type: php
+docroot: public
+php_version: "8.3"
+webserver_type: apache-fpm
+database:
+  type: mysql
+  version: "8.0"
+disable_settings_management: true
+
+web_environment:
+  - DB_HOST=db
+  - DB_PORT=3306
+  - DB_NAME=db
+  - DB_USER=db
+  - DB_PASS=db
+
+hooks:
+  post-start:
+    - exec: "mysql -udb -pdb db < schema.sql"
+    - exec: "mysql -udb -pdb db < seed.sql"

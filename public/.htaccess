@@ -1,0 +1,18 @@
+<IfModule mod_negotiation.c>
+    Options -MultiViews -Indexes
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Send everything that is not a real file to the front controller.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# Uploaded files are stored outside this directory and streamed by PHP, so
+# nothing user-supplied is ever executed from here.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

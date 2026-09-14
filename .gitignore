@@ -1,0 +1,13 @@
+# Local configuration: database credentials and the landings API key.
+/config/config.local.php
+
+# Uploaded and generated image files are content, not source. The demo images
+# that seed.sql references are force-added so the seed works out of the box.
+/storage/uploads/*
+!/storage/uploads/.gitkeep
+
+.DS_Store
+Thumbs.db
+/.idea
+/.vscode
+*.log
